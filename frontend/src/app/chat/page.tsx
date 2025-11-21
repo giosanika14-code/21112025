@@ -1,13 +1,13 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { api } from '@/lib/api'
 import { Message, ChatSession } from '@/types'
 import toast from 'react-hot-toast'
-import { Send, Star, X } from 'lucide-react'
+import { Send, Star, X, QrCode } from 'lucide-react'
 
-export default function ChatPage() {
+function ChatContent() {
   const searchParams = useSearchParams()
   const qrCode = searchParams.get('qr')
 
@@ -20,13 +20,25 @@ export default function ChatPage() {
   const [ratingTaskId, setRatingTaskId] = useState<string | null>(null)
   const [rating, setRating] = useState(0)
   const [ratingComment, setRatingComment] = useState('')
+  const [demoMode, setDemoMode] = useState(false)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!qrCode) {
-      toast.error('Invalid QR code')
+      // Demo mode - no QR code provided
+      setDemoMode(true)
+      setIsLoading(false)
+      setMessages([
+        {
+          id: '1',
+          sender_type: 'ai',
+          content: 'Welcome to Hospitality AI Demo! To access the full chat, please scan a room QR code. This is a demo version where you can try the interface.',
+          task_id: null,
+          created_at: new Date().toISOString(),
+        },
+      ])
       return
     }
 
@@ -66,7 +78,41 @@ export default function ChatPage() {
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!inputMessage.trim() || !session || isSending) return
+    if (!inputMessage.trim() || isSending) return
+
+    // Demo mode - simulated responses
+    if (demoMode) {
+      const messageText = inputMessage.trim()
+      setInputMessage('')
+
+      const guestMessage: Message = {
+        id: Date.now().toString(),
+        sender_type: 'guest',
+        content: messageText,
+        task_id: null,
+        created_at: new Date().toISOString(),
+      }
+      setMessages((prev) => [...prev, guestMessage])
+
+      // Simulated AI response
+      setTimeout(() => {
+        const aiMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          sender_type: 'ai',
+          content: 'This is a demo response. In the full version, I would analyze your request and create tasks for the appropriate department. Please scan a room QR code to access the full functionality.',
+          task_id: null,
+          created_at: new Date().toISOString(),
+        }
+        setMessages((prev) => [...prev, aiMessage])
+      }, 1000)
+
+      return
+    }
+
+    if (!session) {
+      toast.error('No active session')
+      return
+    }
 
     const messageText = inputMessage.trim()
     setInputMessage('')
@@ -158,32 +204,28 @@ export default function ChatPage() {
     )
   }
 
-  if (!session) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 to-accent-50 px-4">
-        <div className="card max-w-md text-center">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">
-            Unable to Start Chat
-          </h2>
-          <p className="text-gray-600 mb-6">
-            Please scan a valid QR code to start chatting with our AI concierge.
-          </p>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-4 py-4 shadow-sm">
-        <div className="max-w-4xl mx-auto">
-          <h1 className="text-xl font-bold text-gray-900">
-            {session.hotel_name}
-          </h1>
-          <p className="text-sm text-gray-600">
-            Room {session.room_number} • AI Concierge
-          </p>
+      <div className="bg-white border-b border-gray-200 shadow-sm">
+        <div className="max-w-4xl mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">
+                {session ? session.hotel_name : 'Hospitality AI'}
+              </h1>
+              <p className="text-sm text-gray-600">
+                {session ? `Room ${session.room_number} • ` : ''}AI Concierge
+                {demoMode && ' (Demo Mode)'}
+              </p>
+            </div>
+            {demoMode && (
+              <div className="flex items-center gap-2 text-yellow-600 text-sm">
+                <QrCode className="w-5 h-5" />
+                <span className="hidden sm:inline">Scan QR for full access</span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -217,7 +259,7 @@ export default function ChatPage() {
                   >
                     {formatTime(message.created_at)}
                   </p>
-                  {message.task_id && message.sender_type === 'ai' && (
+                  {message.task_id && message.sender_type === 'ai' && !demoMode && (
                     <button
                       onClick={() => {
                         setRatingTaskId(message.task_id)
@@ -247,7 +289,7 @@ export default function ChatPage() {
             type="text"
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
-            placeholder="Type your message..."
+            placeholder={demoMode ? 'Try demo chat...' : 'Type your message...'}
             className="flex-1 input"
             disabled={isSending}
           />
@@ -332,5 +374,17 @@ export default function ChatPage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function ChatPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    }>
+      <ChatContent />
+    </Suspense>
   )
 }
